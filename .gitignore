@@ -19,3 +19,5 @@ ytarchive
 
 !build_cgo.sh
 libytarchive.*
+ytarchive.h
+ytarchive.so
