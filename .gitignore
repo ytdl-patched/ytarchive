@@ -16,3 +16,6 @@ getvinfo.py
 ytarchive
 *.exe
 *.zip
+
+!build_cgo.sh
+libytarchive.*

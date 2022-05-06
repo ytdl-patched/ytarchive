@@ -1,13 +1,51 @@
+//go:build cgo
+
 package main
+
+// #include <stdio.h>
+// #include <stdlib.h>
 
 import (
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+	"unsafe"
 )
 
-// import "C"
+import "C"
+
+// unused variables needed to build
+const (
+	ActionAsk = iota
+	ActionDo
+	ActionDoNot
+)
+
+var (
+	downloadThumbnail bool
+	mkv               bool
+	addMeta           bool
+	info              *DownloadInfo
+)
+
+// to prevent from the instance to be collected by GC
+var instances map[uintptr]*CgoDownloadState
+
+func stateToPtr(st *CgoDownloadState) uintptr {
+	p := uintptr(unsafe.Pointer(st))
+
+    if instances == nil {
+        instances = make(map[uintptr]*CgoDownloadState)
+    }
+    instances[p] = st
+
+    return p
+}
+
+func ptrToState(ptr uintptr) *CgoDownloadState {
+	return (*CgoDownloadState)(unsafe.Pointer(ptr))
+}
 
 type CgoDownloadState struct {
 	info         *DownloadInfo
@@ -26,17 +64,23 @@ type YtdlMicroformat struct {
 }
 
 //export initialize
-func initialize(videoId string) *CgoDownloadState {
+func initialize(videoIdC *C.char) uintptr {
+	videoId := C.GoString(videoIdC)
 	di := NewDownloadInfo()
 	di.VideoID = videoId
 	di.URL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", di.VideoID)
-	return &CgoDownloadState{
+	return stateToPtr(&CgoDownloadState{
 		info: di,
-	}
+	})
 }
 
 //export registerFormat
-func registerFormat(p *CgoDownloadState, id, fmtUrl, manifestUrl, filepath string) {
+func registerFormat(ptr uintptr, idC, fmtUrlC, manifestUrlC, filepathC *C.char) {
+	id := C.GoString(idC)
+	fmtUrl := C.GoString(fmtUrlC)
+	manifestUrl := C.GoString(manifestUrlC)
+	filepath := C.GoString(filepathC)
+	p := ptrToState(ptr)
 	p.formats = append(p.formats, YtdlMicroformat{
 		id:          id,
 		url:         fmtUrl,
@@ -56,20 +100,22 @@ func registerFormat(p *CgoDownloadState, id, fmtUrl, manifestUrl, filepath strin
 }
 
 //export loadCookies
-func loadCookies(cookieFile string) bool {
+func loadCookies(cookieFileC *C.char) C.int {
+	cookieFile := C.GoString(cookieFileC)
 	cjar, err := info.ParseNetscapeCookiesFile(cookieFile)
 	if err != nil {
 		LogError("Failed to load cookies file: %s", err)
-		return false
+		return C.int(0) // false
 	}
 
 	client.Jar = cjar
 	LogInfo("Loaded cookie file %s", cookieFile)
-	return true
+	return C.int(1) // true
 }
 
 //export runDownloader
-func runDownloader(state *CgoDownloadState) {
+func runDownloader(ptr uintptr) {
+	state := ptrToState(ptr)
 	state.progressChan = make(chan *ProgressInfo, state.info.Jobs*2)
 	state.dlDoneChan = make(chan string, state.info.Jobs)
 	dlDoneChan := make(chan struct{}, state.info.Jobs)
@@ -88,7 +134,8 @@ func runDownloader(state *CgoDownloadState) {
 }
 
 //export interrupt
-func interrupt(state *CgoDownloadState) {
+func interrupt(ptr uintptr) {
+	state := ptrToState(ptr)
 	state.info.Stop()
 	// we flag all other formats too
 	for _, v := range state.formats {
@@ -106,37 +153,46 @@ func serializeError(err error) string {
 }
 
 //export poll
-func poll(state *CgoDownloadState, timeout int) string {
-	select {
-	case p := <-state.progressChan:
-		data := map[string]interface{}{
-			"type":   "progress",
-			"params": *p,
+func poll(ptr uintptr, timeoutC C.int) *C.char {
+	state := ptrToState(ptr)
+	timeout := int(timeoutC)
+
+	ret := func() string {
+		select {
+		case p := <-state.progressChan:
+			data := map[string]interface{}{
+				"type":   "progress",
+				"params": *p,
+			}
+			res, err := json.Marshal(data)
+			if err != nil {
+				return serializeError(err)
+			}
+			return string(res)
+		case fmtId := <-state.dlDoneChan:
+			data := map[string]interface{}{
+				"type":   "done",
+				"params": fmtId,
+			}
+			res, err := json.Marshal(data)
+			if err != nil {
+				return serializeError(err)
+			}
+			return string(res)
+		case <-time.After(time.Duration(timeout) * time.Millisecond):
+			data := map[string]interface{}{
+				"type":   "tryagain",
+				"params": "",
+			}
+			res, err := json.Marshal(data)
+			if err != nil {
+				return serializeError(err)
+			}
+			return string(res)
 		}
-		res, err := json.Marshal(data)
-		if err != nil {
-			return serializeError(err)
-		}
-		return string(res)
-	case fmtId := <-state.dlDoneChan:
-		data := map[string]interface{}{
-			"type":   "done",
-			"params": fmtId,
-		}
-		res, err := json.Marshal(data)
-		if err != nil {
-			return serializeError(err)
-		}
-		return string(res)
-	case <-time.After(time.Duration(timeout) * time.Millisecond):
-		data := map[string]interface{}{
-			"type":   "tryagain",
-			"params": "",
-		}
-		res, err := json.Marshal(data)
-		if err != nil {
-			return serializeError(err)
-		}
-		return string(res)
-	}
+	}()
+
+	return C.CString(ret)
 }
+
+func main() {}
