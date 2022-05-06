@@ -706,6 +706,19 @@ func (di *DownloadInfo) GetVideoInfo() bool {
 				di.SetDownloadUrl(DtypeVideo, dlUrls[di.Quality])
 			}
 		}
+
+		// fill in some types if the key is itag itself
+		for k := range di.MDLInfo {
+			_, err := strconv.Atoi(k)
+			if err != nil {
+				continue
+			}
+			value, vidOk := dlUrls[di.Quality]
+			if !vidOk {
+				continue
+			}
+			di.SetDownloadUrl(k, value)
+		}
 	}
 
 	if !di.InProgress {
