@@ -202,25 +202,24 @@ func poll(ptr uintptr, timeoutC C.int) *C.char {
 	state := ptrToState(ptr)
 	timeout := int(timeoutC)
 
-	data := func() map[string]interface{} {
-		select {
-		case p := <-state.progressChan:
-			return map[string]interface{}{
-				"type":   "progress",
-				"params": *p,
-			}
-		case fmtId := <-state.dlDoneChan:
-			return map[string]interface{}{
-				"type":   "done",
-				"params": fmtId,
-			}
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return map[string]interface{}{
-				"type":   "tryagain",
-				"params": "",
-			}
+	var data map[string]interface{}
+	select {
+	case p := <-state.progressChan:
+		data = map[string]interface{}{
+			"type":   "progress",
+			"params": *p,
 		}
-	}()
+	case fmtId := <-state.dlDoneChan:
+		data = map[string]interface{}{
+			"type":   "done",
+			"params": fmtId,
+		}
+	case <-time.After(time.Duration(timeout) * time.Millisecond):
+		data = map[string]interface{}{
+			"type":   "tryagain",
+			"params": "",
+		}
+	}
 
 	var eka string
 	res, err := json.Marshal(data)
