@@ -3,7 +3,16 @@ import json
 
 from typing import Union
 
-dynload = ctypes.CDLL("./_ytarchive.so")
+try:
+    from .util import derive_binname, golang_target
+    dynload = ctypes.CDLL(f"./{derive_binname(*golang_target())}")
+except OSError as e:
+    try:
+        # fallback for debugging
+        dynload = ctypes.CDLL("./_ytarchive.so")
+    except OSError:
+        raise e
+
 dynload.goInfo.argtypes = []
 dynload.goInfo.restype = ctypes.c_char_p
 up_siz_str, = dynload.goInfo().decode().split(" ")
