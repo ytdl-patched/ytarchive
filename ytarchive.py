@@ -109,6 +109,7 @@ def interrupt(ptr: int):
 def poll(ptr: int, timeout: int) -> dict:
     """
     Polling method for downloader, to check progress of download.
+    Timeout is in milliseconds, unlike time.sleep.
     JSON returned by golang side is decoded and returned.
     """
     # json.loads accepts both str and bytes
