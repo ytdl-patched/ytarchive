@@ -22,7 +22,7 @@ else:
 dynload.initialize.argtypes = [ctypes.c_char_p]
 dynload.initialize.restype = go_uintptr
 
-dynload.release.argtypes = [ctypes.c_char_p]
+dynload.release.argtypes = [ctypes.c_int]
 dynload.release.restype = None
 
 dynload.registerFormat.argtypes = [go_uintptr, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
