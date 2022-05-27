@@ -63,6 +63,13 @@ type YtdlMicroformat struct {
 	filepath    string
 }
 
+//export goInfo
+func goInfo() *C.char {
+	var a uintptr
+	// order: <size of uintptr>
+	return C.CString(fmt.Sprintf("%d", unsafe.Sizeof(a)))
+}
+
 //export initialize
 func initialize(videoIdC *C.char) uintptr {
 	videoId := C.GoString(videoIdC)
@@ -72,6 +79,13 @@ func initialize(videoIdC *C.char) uintptr {
 	return stateToPtr(&CgoDownloadState{
 		info: di,
 	})
+}
+
+//export release
+func release(ptr uintptr) {
+	if _, ok := instances[ptr]; ok {
+		delete(instances, ptr)
+	}
 }
 
 //export registerFormat
