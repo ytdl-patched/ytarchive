@@ -86,11 +86,11 @@ type MetaInfo map[string]string
    Info to be sent through the progress queue
 */
 type ProgressInfo struct {
-	DataType  string
-	ByteCount int
-	MaxSeq    int
-	CurFrag   int
-	StartFrag int
+	DataType  string `json:"dataType"`
+	ByteCount int    `json:"byteCount"`
+	MaxSeq    int    `json:"maxSeq"`
+	CurFrag   int    `json:"curFrag"`
+	StartFrag int    `json:"startFrag"`
 }
 
 /*

@@ -6,10 +6,14 @@ package main
 // #include <stdlib.h>
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -62,6 +66,33 @@ type YtdlMicroformat struct {
 	manifestUrl string
 	filepath    string
 }
+
+
+// workaround to make sure ascii-only strings
+// https://github.com/golang/go/issues/39137 https://go.dev/play/p/eJfouGxeEzs
+func asciify(str string) string {
+	var b bytes.Buffer
+
+	for len(str) > 0 {
+		r, size := utf8.DecodeRuneInString(str)
+
+		if r > unicode.MaxLatin1 {
+			if size > 3 {
+				r1, r2 := utf16.EncodeRune(r)
+				b.WriteString(fmt.Sprintf("\\u%04x\\u%04x", r1, r2))
+			} else {
+				b.WriteString(fmt.Sprintf("\\u%04x", r))
+			}
+
+		} else {
+			b.WriteRune(r)
+		}
+
+		str = str[size:]
+	}
+	return b.String()
+}
+
 
 //export goInfo
 func goInfo() *C.char {
@@ -171,42 +202,34 @@ func poll(ptr uintptr, timeoutC C.int) *C.char {
 	state := ptrToState(ptr)
 	timeout := int(timeoutC)
 
-	ret := func() string {
+	data := func() map[string]interface{} {
 		select {
 		case p := <-state.progressChan:
-			data := map[string]interface{}{
+			return map[string]interface{}{
 				"type":   "progress",
 				"params": *p,
 			}
-			res, err := json.Marshal(data)
-			if err != nil {
-				return serializeError(err)
-			}
-			return string(res)
 		case fmtId := <-state.dlDoneChan:
-			data := map[string]interface{}{
+			return map[string]interface{}{
 				"type":   "done",
 				"params": fmtId,
 			}
-			res, err := json.Marshal(data)
-			if err != nil {
-				return serializeError(err)
-			}
-			return string(res)
 		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			data := map[string]interface{}{
+			return map[string]interface{}{
 				"type":   "tryagain",
 				"params": "",
 			}
-			res, err := json.Marshal(data)
-			if err != nil {
-				return serializeError(err)
-			}
-			return string(res)
 		}
 	}()
 
-	return C.CString(ret)
+	var eka string
+	res, err := json.Marshal(data)
+	if err != nil {
+		eka = serializeError(err)
+	} else {
+		eka = string(res)
+	}
+	return C.CString(asciify(eka))
 }
 
 func main() {}
